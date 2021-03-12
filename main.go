@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
@@ -91,7 +90,6 @@ func addBook(w http.ResponseWriter, r *http.Request) {
 	err := db.QueryRow("insert into books (title, author, year) values($1,$2,$3) returning id;",
 		book.Title, book.Author, book.Year).Scan(&id)
 	logFatal(err)
-
 	json.NewEncoder(w).Encode(book)
 }
 
@@ -100,25 +98,24 @@ func updateBook(w http.ResponseWriter, r *http.Request) {
 	var book Book
 	_ = json.NewDecoder(r.Body).Decode(&book)
 
-	for i, item := range books {
-		if item.ID == book.ID {
-			books[i] = book
-		}
-	}
+	res, err := db.Exec("update books set title = $1, author = $2, year = $3 where id = $4;",
+		book.Title, book.Author, book.Year, book.ID)
+	logFatal(err)
 
-	json.NewEncoder(w).Encode(books)
+	rowsUpdated, err := res.RowsAffected()
+	logFatal(err)
+	json.NewEncoder(w).Encode(rowsUpdated)
 }
 
 func deleteBook(w http.ResponseWriter, r *http.Request) {
 	log.Println("delete a book")
 	var params = mux.Vars(r)
 
-	id, _ := strconv.Atoi(params["id"])
-	for i, book := range books {
-		if book.ID == id {
-			books = append(books[:i], books[i+1:]...)
-		}
-	}
+	res, err := db.Exec("delete from books where id = $1;", params["id"])
+	logFatal(err)
 
-	json.NewEncoder(w).Encode(books)
+	rowsUpdated, err := res.RowsAffected()
+	logFatal(err)
+
+	json.NewEncoder(w).Encode(rowsUpdated)
 }
