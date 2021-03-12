@@ -1,12 +1,16 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gorilla/mux"
+	_ "github.com/lib/pq"
+	"github.com/subosito/gotenv"
 )
 
 type Book struct {
@@ -17,16 +21,31 @@ type Book struct {
 }
 
 var books []Book
+var db *sql.DB
+
+func init() {
+	gotenv.Load()
+}
+func logFatal(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 
 func main() {
+	var err error
+	psqlInfo := os.Getenv("DB_CONN")
+
+	log.Println(psqlInfo)
+	db, err = sql.Open("postgres", psqlInfo)
+	logFatal(err)
+	//defer db.Close()
+
+	err = db.Ping()
+	logFatal(err)
+
 	router := mux.NewRouter()
-	books = append(books,
-		Book{ID: 1, Title: "How to fly", Author: "Charles", Year: "2005"},
-		Book{ID: 2, Title: "How to Pray", Author: "Sam", Year: "2004"},
-		Book{ID: 3, Title: "How to Cook", Author: "Lekan", Year: "2006"},
-		Book{ID: 4, Title: "How to Dance", Author: "Idowu", Year: "2007"},
-		Book{ID: 5, Title: "How to Code", Author: "Dayo", Year: "2005"},
-	)
+
 	router.HandleFunc("/books", getBooks).Methods("GET")
 	router.HandleFunc("/books/{id}", getBook).Methods("GET")
 	router.HandleFunc("/books", addBook).Methods("POST")
@@ -37,13 +56,26 @@ func main() {
 
 func getBooks(w http.ResponseWriter, r *http.Request) {
 	log.Println("get all books")
+
+	var book Book
+	books = []Book{}
+	rows, err := db.Query("select * from books")
+	logFatal(err)
+
+	defer rows.Close()
+
+	for rows.Next() {
+		err := rows.Scan(&book.ID, &book.Title, &book.Author, &book.Year)
+		logFatal(err)
+		books = append(books, book)
+	}
 	json.NewEncoder(w).Encode(books)
 }
 
 func getBook(w http.ResponseWriter, r *http.Request) {
 	log.Println("get a book")
-	var params = mux.Vars(r)
-	log.Println(params)
+	params := mux.Vars(r)
+
 	i, _ := strconv.Atoi(params["id"])
 	for _, book := range books {
 		if book.ID == i {
